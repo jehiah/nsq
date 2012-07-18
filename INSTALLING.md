@@ -20,6 +20,14 @@
     $ cd go-notify
     $ go tool install_as --import-as=bitly/notify
 
+**snappy-go** http://code.google.com/p/snappy-go
+
+    # installed under a custom import path so you can control versioning
+    $ hg clone https://code.google.com/p/snappy-go/
+    $ cd snappy-go/snappy
+    $ go tool install_as --import-as=snappy
+    
+
 # installing nsq
 
     $ cd nsqd
