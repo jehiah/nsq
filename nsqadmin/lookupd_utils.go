@@ -39,6 +39,7 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer, 0)
 	output := make([]*Producer, 0)
+	maxVersion := NewVersion("0.0.0")
 	for _, addr := range lookupdAddresses {
 		endpoint := fmt.Sprintf("http://%s/topology", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
@@ -60,15 +61,26 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 			key := fmt.Sprintf("%s:%d:%d", address, httpPort, tcpPort)
 			_, ok := allProducers[key]
 			if !ok {
+				version := producer.Get("version").MustString("unknown")
+				versionObj := NewVersion(version)
+				if !maxVersion.Less(versionObj) {
+					maxVersion = versionObj
+				}
 				p := &Producer{
-					Address:  address,
-					TcpPort:  tcpPort,
-					HttpPort: httpPort,
-					Version:  producer.Get("version").MustString("unknown"),
+					Address:    address,
+					TcpPort:    tcpPort,
+					HttpPort:   httpPort,
+					Version:    version,
+					VersionObj: versionObj,
 				}
 				allProducers[key] = p
 				output = append(output, p)
 			}
+		}
+	}
+	for _, producer := range allProducers {
+		if maxVersion.Less(producer.VersionObj) {
+			producer.OutOfDate = true
 		}
 	}
 	if success == false {

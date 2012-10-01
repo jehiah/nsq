@@ -14,7 +14,7 @@
         <th>Version</th>
     </tr>
     {{range .Producers }}
-    <tr>
+    <tr {{if .OutOfDate}} class="warning"{{end}} >
         <td>{{.Address}}</td>
         <td>{{.TcpPort}}</td>
         <td>{{.HttpPort}}</td>
