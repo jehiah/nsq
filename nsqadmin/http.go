@@ -58,7 +58,7 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 		Topics  []string
 		Version string
 	}{
-		Title:   "",
+		Title:   "NSQ",
 		Topics:  topics,
 		Version: VERSION,
 	}

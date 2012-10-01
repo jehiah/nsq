@@ -61,6 +61,11 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 			key := fmt.Sprintf("%s:%d:%d", address, httpPort, tcpPort)
 			_, ok := allProducers[key]
 			if !ok {
+				topicList, _ := producer.Get("topics").Array()
+				var topics []string
+				for _, t := range topicList {
+					topics = append(topics, t.(string))
+				}
 				version := producer.Get("version").MustString("unknown")
 				versionObj := NewVersion(version)
 				if !maxVersion.Less(versionObj) {
@@ -72,6 +77,7 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 					HttpPort:   httpPort,
 					Version:    version,
 					VersionObj: versionObj,
+					Topics:     topics,
 				}
 				allProducers[key] = p
 				output = append(output, p)

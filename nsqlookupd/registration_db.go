@@ -149,6 +149,16 @@ func (k Registration) IsMatch(category string, key string, subkey string) bool {
 	return true
 }
 
+func (rr Registrations) Filter(category string, key string, subkey string) Registrations {
+	output := make(Registrations, 0)
+	for _, k := range rr {
+		if k.IsMatch(category, key, subkey) {
+			output = append(output, k)
+		}
+	}
+	return output
+}
+
 func (rr Registrations) Keys() []string {
 	keys := make([]string, len(rr))
 	for i, k := range rr {

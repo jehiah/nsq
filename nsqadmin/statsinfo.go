@@ -17,6 +17,7 @@ type Producer struct {
 	HttpPort   int      `json:"http_port"`
 	Version    string   `json:"version"`
 	VersionObj *Version `json:-`
+	Topics     []string `json:"topics"`
 	OutOfDate  bool
 }
 

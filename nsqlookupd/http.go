@@ -99,9 +99,30 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
+// note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
+type producerTopic struct {
+	Address  string   `json:"address"`
+	TcpPort  int      `json:"tcp_port"`
+	HttpPort int      `json:"http_port"`
+	Version  string   `json:"version"`
+	Topics   []string `json:"topics"`
+}
+
 func topologyHandler(w http.ResponseWriter, req *http.Request) {
+	producers := lookupd.DB.FindProducers("client", "", "")
+	producerTopics := make([]*producerTopic, len(producers))
+	for i, p := range producers {
+		producerTopics[i] = &producerTopic{
+			Address:  p.Address,
+			TcpPort:  p.TcpPort,
+			HttpPort: p.HttpPort,
+			Version:  p.Version,
+			Topics:   lookupd.DB.LookupRegistrations(p).Filter("topic", "*", "").Keys(),
+		}
+	}
+
 	data := make(map[string]interface{})
-	data["producers"] = lookupd.DB.FindProducers("client", "", "")
+	data["producers"] = producerTopics
 	util.ApiResponse(w, 200, "OK", data)
 }
 

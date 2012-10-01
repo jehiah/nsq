@@ -7,16 +7,16 @@
 </ul>
 
 <div class="row-fluid"><div class="span12">
-<h1>Topic: {{.Topic}}</h1>
+<h1>Message Topic: {{.Topic}}</h1>
 </div></div>
-<div class="row-fluid"><div class="span12">
-<h2>Topic Message Queue</h2>
+<div class="row-fluid"><div class="span8">
+<h3>Topic Message Queue</h3>
 <table class="table table-bordered table-condensed">
     <tr>
         <th>nsqd Host</th>
         <th>Depth</th>
         <th>Memory + Disk</th>
-        <th>Messages Processed</th>
+        <th>Messages</th>
         <th>Channels</th>
     </tr>
     {{range .TopicHostStats }}
@@ -32,7 +32,7 @@
 </div></div>
 
 <div class="row-fluid"><div class="span12">
-<h2>Channels</h2>
+<h3>Channel Message Queues</h3>
 <table class="table table-bordered table-condensed">
     <tr>
         <th>Channel</th>
@@ -42,7 +42,7 @@
         <th>Deferred</th>
         <th>Requeued</th>
         <th>Timed Out</th>
-        <th>Messages Processed</th>
+        <th>Messages</th>
         <th>Clients</th>
     </tr>
 
