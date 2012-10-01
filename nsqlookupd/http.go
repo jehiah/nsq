@@ -98,11 +98,10 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func shouldPreferLocal(conn net.Conn, addr string) bool {
-	remoteAddr := conn.RemoteAddr().(*net.TCPAddr)
-	addrHost, _, _ := net.SplitHostPort(addr)
-	addrIP := net.ParseIP(addrHost)
-	preferLocal := remoteAddr.IP.IsLoopback() && addrIP.IsLoopback()
-	log.Printf("preferLocal: %v (%s and %s)", preferLocal, conn.RemoteAddr().String(), addr)
-	return preferLocal
+func infoHandler(w http.ResponseWriter, req *http.Request) {
+	util.ApiResponse(w, 200, "OK", struct {
+		Version string `json:"version"`
+	}{
+		Version: VERSION,
+	})
 }
