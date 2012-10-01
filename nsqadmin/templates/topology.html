@@ -1,10 +1,6 @@
 
 {{template "header.html" .}}
 
-<ul class="breadcrumb">
-  <li class="active">Topology</li>
-</ul>
-
 <div class="row-fluid"><div class="span12">
 <h1>NSQD Hosts ({{.Producers | len}})</h1>
 </div></div>
@@ -19,7 +15,7 @@
     </tr>
     {{range .Producers }}
     <tr>
-        <th>{{.Address}}</th>
+        <td>{{.Address}}</td>
         <td>{{.TcpPort}}</td>
         <td>{{.HttpPort}}</td>
         <td>{{.Version}}</td>

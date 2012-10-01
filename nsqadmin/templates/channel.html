@@ -2,7 +2,7 @@
 {{template "header.html" .}}
 
 <ul class="breadcrumb">
-  <li><a href="/">Topics</a> <span class="divider">/</span></li>
+  <li><a href="/">Message Queues</a> <span class="divider">/</span></li>
   <li><a href="/topic/{{.Topic}}">{{.Topic}}</a> <span class="divider">/</span></li>
   <li class="active">{{.Channel}}</li>
 </ul>
@@ -28,7 +28,7 @@
 
 <div class="row-fluid"><div class="span12">
 <h2>Channel Message Queue</h2>
-<table class="table table-bordered">
+<table class="table table-bordered table-condensed">
     <tr>
         <th>Host</th>
         <th>Depth</th>
@@ -74,7 +74,7 @@
 <h3>{{.ChannelStats.ChannelName}} Client Connection Stats</h3>
 
 <div class="row-fluid"><div class="span12">
-<table class="table table-bordered">
+<table class="table table-bordered table-condensed">
     <tr>
         <th>NSQd Host</th>
         <th>Client</th>
