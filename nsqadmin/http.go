@@ -28,6 +28,7 @@ func httpServer(listener net.Listener) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/", indexHandler)
+	handler.HandleFunc("/topology", topologyHandler)
 	handler.HandleFunc("/topic/", topicHandler)
 	handler.HandleFunc("/delete_channel", removeChannelHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
@@ -205,5 +206,23 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+}
 
+func topologyHandler(w http.ResponseWriter, req *http.Request) {
+	producers, _ := getLookupdProducers(lookupdAddresses)
+
+	p := struct {
+		Title     string
+		Version   string
+		Producers []*Producer
+	}{
+		Title:     "NSQD Hosts",
+		Version:   VERSION,
+		Producers: producers,
+	}
+	err := templates.ExecuteTemplate(w, "topology.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
 }

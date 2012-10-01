@@ -35,6 +35,48 @@ func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
 	return allTopics, nil
 }
 
+func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
+	success := false
+	allProducers := make(map[string]*Producer, 0)
+	output := make([]*Producer, 0)
+	for _, addr := range lookupdAddresses {
+		endpoint := fmt.Sprintf("http://%s/topology", addr)
+		log.Printf("LOOKUPD: querying %s", endpoint)
+
+		data, err := util.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			continue
+		}
+		success = true
+
+		producers := data.Get("producers")
+		producersArray, _ := producers.Array()
+		for i, _ := range producersArray {
+			producer := producers.GetIndex(i)
+			address := producer.Get("address").MustString()
+			httpPort := producer.Get("http_port").MustInt()
+			tcpPort := producer.Get("tcp_port").MustInt()
+			key := fmt.Sprintf("%s:%d:%d", address, httpPort, tcpPort)
+			_, ok := allProducers[key]
+			if !ok {
+				p := &Producer{
+					Address:  address,
+					TcpPort:  tcpPort,
+					HttpPort: httpPort,
+					Version:  producer.Get("version").MustString("unknown"),
+				}
+				allProducers[key] = p
+				output = append(output, p)
+			}
+		}
+	}
+	if success == false {
+		return nil, errors.New("unable to query any lookupd")
+	}
+	return output, nil
+}
+
 func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string, error) {
 	success := false
 	allSources := make([]string, 0)
@@ -48,33 +90,12 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 			continue
 		}
 		success = true
-		// do something with the data
-		// "data": {
-		//   "channels": [],
-		//   "producers": [
-		//     {
-		//       "address": "jehiah-air.local",
-		//       "port": "4150",
-		//       "tcp_port": 4150,
-		//       "http_port": 4151
-		//     }
-		//   ],
-		//   "timestamp": 1340152173
-		// },
 
 		producers, _ := data.Get("producers").Array()
 		for _, producer := range producers {
 			producer := producer.(map[string]interface{})
 			address := producer["address"].(string)
-
-			var port int
-			portObj, ok := producer["http_port"]
-			if !ok {
-				// backwards compatible
-				port = int(producer["port"].(float64)) + 1
-			} else {
-				port = int(portObj.(float64))
-			}
+			port := int(producer["http_port"].(float64))
 			key := fmt.Sprintf("%s:%d", address, port)
 			allSources = stringAdd(allSources, key)
 		}

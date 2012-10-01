@@ -39,7 +39,6 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 
 func topicsHandler(w http.ResponseWriter, req *http.Request) {
 	topics := lookupd.DB.FindRegistrations("topic", "*", "").Keys()
-	log.Printf("registrations topics %v", topics)
 	data := make(map[string]interface{})
 	data["topics"] = topics
 	util.ApiResponse(w, 200, "OK", data)
@@ -102,7 +101,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 func topologyHandler(w http.ResponseWriter, req *http.Request) {
 	data := make(map[string]interface{})
-	data["producers"] = lookupd.DB.FindProducers("topic", "*", "").CurrentProducers()
+	data["producers"] = lookupd.DB.FindProducers("client", "", "")
 	util.ApiResponse(w, 200, "OK", data)
 }
 

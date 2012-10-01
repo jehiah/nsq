@@ -4,6 +4,13 @@ import (
 	"time"
 )
 
+type Producer struct {
+	Address  string `json:"address"`
+	TcpPort  int    `json:"tcp_port"`
+	HttpPort int    `json:"http_port"`
+	Version  string `json:"version"`
+}
+
 type TopicHostStats struct {
 	HostAddress  string
 	Depth        int64
