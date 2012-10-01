@@ -15,8 +15,10 @@ func httpServer(listener net.Listener) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
-	handler.HandleFunc("/topics", TopicsHandler)
+	handler.HandleFunc("/topics", topicsHandler)
+	handler.HandleFunc("/topology", topologyHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
+	handler.HandleFunc("/info", infoHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -35,7 +37,7 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func TopicsHandler(w http.ResponseWriter, req *http.Request) {
+func topicsHandler(w http.ResponseWriter, req *http.Request) {
 	topics := lookupd.DB.FindRegistrations("topic", "*", "").Keys()
 	log.Printf("registrations topics %v", topics)
 	data := make(map[string]interface{})
@@ -96,6 +98,12 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func topologyHandler(w http.ResponseWriter, req *http.Request) {
+	data := make(map[string]interface{})
+	data["producers"] = lookupd.DB.FindProducers("topic", "*", "").CurrentProducers()
+	util.ApiResponse(w, 200, "OK", data)
 }
 
 func infoHandler(w http.ResponseWriter, req *http.Request) {
