@@ -163,14 +163,22 @@ func (n *NSQd) Exit() {
 func (n *NSQd) GetTopic(topicName string) *Topic {
 	n.Lock()
 	defer n.Unlock()
-
 	topic, ok := n.topicMap[topicName]
 	if !ok {
 		topic = NewTopic(topicName, n.options)
 		n.topicMap[topicName] = topic
 		log.Printf("TOPIC(%s): created", topic.name)
-	}
 
+		// if using lookupd, make a blocking call to get the topics, and immediately create them.
+		// this makes sure that any message received is buffered to the right channels
+		if len(n.lookupAddrs) > 0 {
+			channels, _ := util.GetChannelsForTopic(topic.name, n.lookupAddrs)
+			for _, channel := range channels {
+				log.Printf("TOPIC(%s) creating channel %s (from lookupd)", topic.name, channel)
+				topic.GetChannel(channel)
+			}
+		}
+	}
 	return topic
 }
 

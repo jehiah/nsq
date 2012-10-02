@@ -11,6 +11,7 @@ import (
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
 func lookupRouter(lookupHosts []string, exitChan chan int) {
+	// TODO: as written, this function assumes global state. it should probably be a function on *NSQD
 	notifyChannelChan := make(chan interface{})
 	notifyTopicChan := make(chan interface{})
 	syncTopicChan := make(chan *nsq.LookupPeer)
