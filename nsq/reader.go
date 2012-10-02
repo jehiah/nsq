@@ -289,7 +289,6 @@ func (q *Reader) queryLookupd() {
 			continue
 		}
 
-		// do something with the data
 		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local","port":4150, "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
 		producers, _ := data.Get("data").Get("producers").Array()
 		for _, producer := range producers {

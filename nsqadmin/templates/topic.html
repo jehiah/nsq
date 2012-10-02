@@ -7,7 +7,7 @@
 </ul>
 
 <div class="row-fluid"><div class="span12">
-<h1>Message Topic: {{.Topic}}</h1>
+<h1>Topic: {{.Topic}}</h1>
 </div></div>
 <div class="row-fluid"><div class="span8">
 <h3>Topic Message Queue</h3>
@@ -33,6 +33,10 @@
 
 <div class="row-fluid"><div class="span12">
 <h3>Channel Message Queues</h3>
+{{ if not .ChannelStats }}
+    <p><span class="label label-warning">Warning</span> no channels have been created. Messages will queue at the topic
+        message queue until a client connects.</p>
+{{else}}
 <table class="table table-bordered table-condensed">
     <tr>
         <th>Channel</th>
@@ -60,6 +64,7 @@
     </tr>
 {{ end }}
 </table>
+{{end}}
 </div></div>
 
 {{template "footer.html" .}}
