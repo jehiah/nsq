@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,17 @@ type SyncMsg struct {
 
 func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.FinishedMessage) {
 	l.logChan <- &Message{m, responseChannel}
+}
+
+func debugGC() {
+	var m runtime.MemStats
+	ticker := time.NewTicker(5 * time.Second)
+	for {
+		<-ticker.C
+		runtime.ReadMemStats(&m)
+		log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
+		log.Printf("GC Runs: %#v", m.PauseNs)
+	}
 }
 
 func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan os.Signal) {
@@ -169,6 +181,8 @@ func main() {
 	if len(nsqdTCPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
+
+	go debugGC()
 
 	hupChan := make(chan os.Signal, 1)
 	termChan := make(chan os.Signal, 1)
