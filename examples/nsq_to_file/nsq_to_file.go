@@ -55,14 +55,17 @@ func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.Fin
 }
 
 func debugGC() {
-	var m runtime.MemStats
 	ticker := time.NewTicker(5 * time.Second)
 	for {
 		<-ticker.C
-		runtime.ReadMemStats(&m)
-		log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
-		log.Printf("GC Runs: %#v", m.PauseNs)
+		dumpGC()
 	}
+}
+func dumpGC() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
+	// log.Printf("GC Runs: %#v", m.PauseNs)
 }
 
 func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan os.Signal) {
@@ -73,6 +76,8 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 	closing := false
 
 	for {
+		log.Printf("start loop")
+		dumpGC()
 		select {
 		case <-termChan:
 			ticker.Stop()
@@ -108,6 +113,8 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 
 		if closing || sync || r.IsStarved() {
 			if pos > 0 {
+				log.Printf("start sync")
+				dumpGC()
 				log.Printf("syncing %d records to disk", pos)
 				err := f.out.Sync()
 				if err != nil {
@@ -119,6 +126,7 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 					m.returnChannel <- &nsq.FinishedMessage{m.Id, 0, true}
 					output[pos] = nil
 				}
+				dumpGC()
 			}
 			sync = false
 		}
