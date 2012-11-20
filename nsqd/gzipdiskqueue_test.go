@@ -25,7 +25,7 @@ func newFile(filename string, dir string) (*os.File, error) {
 
 func writeRecords(w io.Writer, count int) {
 	for i := 0; i < count; i += 1 {
-		// random string
+		// TODO: random/longer message
 		w.Write([]byte("message\n"))
 	}
 }
@@ -36,9 +36,9 @@ func TestGzipDiskQueue(t *testing.T) {
 
 	filename := "topic.server.2012-11-19_10.log.gz"
 	recordCount := 10
-
 	archiveDir := os.TempDir()
 	log.Printf("archiveDir is %s", archiveDir)
+
 	file, err := newFile(filename, archiveDir)
 	assert.Equal(t, err, nil)
 	gzipWriter := gzip.NewWriter(file)
@@ -48,7 +48,8 @@ func TestGzipDiskQueue(t *testing.T) {
 
 	file, err = newFile("topic.MANIFEST", archiveDir)
 	assert.Equal(t, err, nil)
-	file.WriteString(fmt.Sprintf("%s:%d\n", filename, recordCount))
+	ts, _ := time.Parse("2006-01-02 03", "2012-11-18 10")
+	file.WriteString(fmt.Sprintf("%d\t%d\t%s\n", ts.Unix(), recordCount, filename))
 	file.Close()
 
 	channel := "testgz-20121118-20121119"

@@ -17,6 +17,18 @@ import (
 	"time"
 )
 
+type Manifest struct {
+	topic   string
+	file    string
+	entries []*ManifestEntry
+}
+
+type ManifestEntry struct {
+	fileName    string
+	recordCount int64
+	timePeriod  time.Time
+}
+
 // GzipDiskQueue implements the BackendQueue interface
 // providing an interface to externally provided topic archives
 type GzipDiskQueue struct {
@@ -50,16 +62,15 @@ type GzipDiskQueue struct {
 }
 
 type GzipFile struct {
-	name        string
-	recordCount int64
-	file        *os.File
-	rawReader   *bufio.Reader
-	gzipReader  *gzip.Reader
-	position    int64
+	*ManifestEntry
+	file       *os.File
+	rawReader  *bufio.Reader
+	gzipReader *gzip.Reader
+	position   int64
 }
 
 func (g *GzipFile) Open() error {
-	f, err := os.OpenFile(g.name, os.O_RDONLY, 0600)
+	f, err := os.OpenFile(g.fileName, os.O_RDONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -87,8 +98,64 @@ func (g *GzipFile) Close() error {
 	return nil
 }
 
-// ...-YYMMDD-YYMMDD
-var channelTimeFrameFormat = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+-([0-9]{6})-([0-9]{6}|now)$`)
+// reads a manifest file of the name topic.MANIFEST
+// where each line is a `timestamp + \t + record_count + \t + filename +\n`
+// any files referenced in the manifest that don't exist will just be skipped
+// filenames are relative to the path of the manifest file
+func OpenManifestFile(p string, topic string) (*Manifest, error) {
+	manifestFile := path.Join(p, fmt.Sprintf("%s.MANIFEST", topic))
+	f, err := os.OpenFile(manifestFile, os.O_RDONLY, 0600)
+	defer f.Close()
+	if err != nil {
+		return nil, err
+	}
+	m := &Manifest{topic: topic, file: manifestFile}
+
+	reader := bufio.NewReader(f)
+	for {
+		line, _, err := reader.ReadLine()
+		if err != nil {
+			// if ! EOF log
+			break
+		}
+		chunks := strings.SplitN(string(line), "\t", 3)
+		if len(chunks) != 3 {
+			log.Printf("MANIFEST(%s) invalid record %s (%d chunks)", manifestFile, line, len(chunks))
+			continue
+		}
+
+		ts, err := strconv.Atoi(chunks[0])
+		if err != nil {
+			log.Printf("MANIFEST(%s) invalid record %s. (%s not timestamp) %s", manifestFile, line, chunks[0], err.Error())
+			continue
+		}
+
+		records, err := strconv.Atoi(chunks[1])
+		if err != nil {
+			log.Printf("MANIFEST(%s): invalid record %s. (%s not integer) %s", manifestFile, line, chunks[1], err.Error())
+			continue
+		}
+
+		filePath := path.Join(p, chunks[2])
+
+		f, err = os.OpenFile(filePath, os.O_RDONLY, 0600)
+		if err != nil {
+			log.Printf("MANIFEST(%s): unable to open %s. skipping", manifestFile, filePath)
+			continue
+		}
+		f.Close()
+		e := &ManifestEntry{
+			fileName:    filePath,
+			recordCount: int64(records),
+			timePeriod:  time.Unix(int64(ts), 0),
+		}
+		m.entries = append(m.entries, e)
+	}
+	return m, nil
+}
+
+// ...-YYYYMMDD-YYYYMMDD
+var channelTimeFrameFormat = regexp.MustCompile(`^[-\.a-zA-Z0-9_]+-([0-9]{8})-([0-9]{8}|now)$`)
 
 func IsGzipDiskChannel(topic string, archivePath, channel string) bool {
 	// if it's a valid channel name, and a topic.MANIFEST file exists
@@ -121,15 +188,27 @@ func NewGzipDiskQueue(topic string, channel string, dataPath string, archivePath
 		exitSyncChan:      make(chan int),
 		syncEvery:         syncEvery,
 	}
-	d.parseStartEndTime(channel)
+	err := d.parseStartEndTime(channel)
+	if err != nil {
+		log.Fatalf("invalid channel %s - %s", channel, err.Error())
+	}
 	// no need to lock here, nothing else could possibly be touching this instance
-	err := d.retrieveMetaData()
+	err = d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
 		log.Printf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
 	} else if err != nil {
-		d.loadManifest()
+		manifest, err := OpenManifestFile(archivePath, topic)
+		if err != nil {
+			log.Printf("ERROR: DISKQUEUE(%s) failed opening manifest file %s", d.name, err.Error())
+		}
+		for _, e := range manifest.entries {
+			if (e.timePeriod.After(d.startRange) && e.timePeriod.Before(d.endRange)) || e.timePeriod.Equal(d.startRange) {
+				d.files = append(d.files, &GzipFile{ManifestEntry: e})
+				d.depth += e.recordCount
+			}
+		}
 	}
-
+	log.Printf("DISKQUEUE(%s) found %d data files %d messages", d.name, len(d.files), d.depth)
 	go d.ioLoop()
 	return &d
 }
@@ -139,68 +218,22 @@ func (d *GzipDiskQueue) parseStartEndTime(channel string) error {
 	var start time.Time
 	var end time.Time
 	if len(matches) != 3 {
-		return errors.New("invalid channel")
+		return errors.New("invalid start/stop timeframe in channel")
 	}
-	start, err := time.Parse("060102", matches[1])
+	start, err := time.Parse("20060102", matches[1])
 	if err != nil {
 		return err
 	}
 	if matches[2] == "now" {
 		end = time.Now()
 	} else {
-		end, err = time.Parse("060102", matches[2])
+		end, err = time.Parse("20060102", matches[2])
 		if err != nil {
 			return err
 		}
 	}
 	d.startRange = start
 	d.endRange = end
-	return nil
-}
-
-// reads a manifest file of the name topic.MANIFEST
-// where each line is a `filename + : + record_count + \n`
-// any files referenced in the manifest that don't exist will just be skipped
-func (d *GzipDiskQueue) loadManifest() error {
-	manifestFile := path.Join(d.archivePath, fmt.Sprintf("%s.MANIFEST", d.topic))
-	f, err := os.OpenFile(manifestFile, os.O_RDONLY, 0600)
-	defer f.Close()
-	if err != nil {
-		return err
-	}
-	reader := bufio.NewReader(f)
-	for {
-		line, _, err := reader.ReadLine()
-		if err != nil {
-			// if ! EOF log
-			break
-		}
-		chunks := strings.SplitN(string(line), ":", 2)
-		if len(chunks) != 2 {
-			log.Printf("invalid MANIFEST record %s (%d chunks)", line, len(chunks))
-			continue
-		}
-
-		records, err := strconv.Atoi(chunks[1])
-		if err != nil {
-			log.Printf("invalid MANIFEST record %s. (%s not integer) %s", line, chunks[1], err.Error())
-			continue
-		}
-
-		// TODO filter based on startRange, endRange
-
-		fullPath := path.Join(d.archivePath, chunks[0])
-		f, err = os.OpenFile(fullPath, os.O_RDONLY, 0600)
-		if err != nil {
-			log.Printf("unable to open %s. skipping", chunks[0])
-		}
-		f.Close()
-		log.Printf("found %d records in %s", records, fullPath)
-		gf := &GzipFile{name: fullPath, recordCount: int64(records)}
-		d.depth += gf.recordCount
-		d.files = append(d.files, gf)
-	}
-	log.Printf("found %d files for topic: %s", len(d.files), d.topic)
 	return nil
 }
 
@@ -287,10 +320,10 @@ func (d *GzipDiskQueue) readOne() ([]byte, error) {
 		d.files = d.files[1:]
 		err := d.currentFile.Open()
 		if err != nil {
-			log.Printf("DISKQUEUE(%s): failed opening %s", d.name, d.currentFile.name)
+			log.Printf("DISKQUEUE(%s): failed opening %s", d.name, d.currentFile.fileName)
 			return nil, err
 		}
-		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, d.currentFile.name)
+		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, d.currentFile.fileName)
 	}
 
 	line, _, err := d.currentFile.rawReader.ReadLine()
@@ -401,7 +434,7 @@ func (d *GzipDiskQueue) ioLoop() {
 			if err != nil {
 				if d.currentFile != nil {
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
-						d.name, d.currentFile.position, d.currentFile.name, err.Error())
+						d.name, d.currentFile.position, d.currentFile.fileName, err.Error())
 				}
 				// TODO: we assume that all read errors are recoverable...
 				// it will probably turn out that this is a terrible assumption
