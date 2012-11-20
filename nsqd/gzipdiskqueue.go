@@ -401,7 +401,7 @@ func (d *GzipDiskQueue) persistMetaData() error {
 }
 
 func (d *GzipDiskQueue) metaDataFileName() string {
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.dat"), d.name)
+	return path.Join(d.dataPath, fmt.Sprintf("%s.diskqueue.meta.dat", d.name))
 }
 
 // ioLoop provides the backend for exposing a go channel (via ReadChan())
