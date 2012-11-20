@@ -36,6 +36,7 @@ type NSQd struct {
 type nsqdOptions struct {
 	memQueueSize    int64
 	dataPath        string
+	archivePath     string
 	maxBytesPerFile int64
 	syncEvery       int64
 	msgTimeout      time.Duration

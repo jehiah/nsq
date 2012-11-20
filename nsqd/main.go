@@ -27,6 +27,7 @@ var (
 	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
+	archivePath     = flag.String("archive-path", "", "path to archived messages for backfill channels")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
 	statsdAddress   = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for writing stats")
@@ -93,6 +94,7 @@ func main() {
 	options.maxBytesPerFile = *maxBytesPerFile
 	options.syncEvery = *syncEvery
 	options.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+	options.archivePath = *archivePath
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr

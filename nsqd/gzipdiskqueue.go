@@ -8,11 +8,13 @@ import (
 	"log"
 	"os"
 	"path"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // GzipDiskQueue implements the BackendQueue interface
@@ -21,16 +23,19 @@ type GzipDiskQueue struct {
 	sync.RWMutex
 
 	// instatiation time metadata
-	name      string
-	dataPath  string
-	topic     string
-	syncEvery int64 // number of writes per sync
-	exitFlag  int32
+	name        string
+	dataPath    string
+	archivePath string
+	topic       string
+	syncEvery   int64 // number of writes per sync
+	exitFlag    int32
 
 	// run-time state (also persisted to disk)
 	readPos int64
 	depth   int64
 
+	startRange  time.Time
+	endRange    time.Time
 	files       []*GzipFile
 	currentFile *GzipFile
 
@@ -82,15 +87,33 @@ func (g *GzipFile) Close() error {
 	return nil
 }
 
+// ...-YYMMDD-YYMMDD
+var channelTimeFrameFormat = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+-([0-9]{6})-([0-9]{6}|now)$`)
+
+func IsGzipDiskChannel(topic string, archivePath, channel string) bool {
+	// if it's a valid channel name, and a topic.MANIFEST file exists
+	if !channelTimeFrameFormat.MatchString(channel) {
+		return false
+	}
+	manifestFile := path.Join(archivePath, fmt.Sprintf("%s.MANIFEST", topic))
+	f, err := os.OpenFile(manifestFile, os.O_RDONLY, 0600)
+	defer f.Close()
+	if err != nil {
+		return true
+	}
+	return false
+}
+
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 // this expects a topic.MANIFEST file in archivePath with records of `filename + : + len(records)\n`
 // or an archived metadata state
-func NewGzipDiskQueue(name string, dataPath string, topic string, archivePath string, syncEvery int64) BackendQueue {
+func NewGzipDiskQueue(topic string, channel string, dataPath string, archivePath string, syncEvery int64) BackendQueue {
 	d := GzipDiskQueue{
-		name:              name,
-		dataPath:          dataPath,
 		topic:             topic,
+		name:              channel,
+		dataPath:          dataPath,
+		archivePath:       archivePath,
 		readChan:          make(chan []byte),
 		emptyChan:         make(chan int),
 		emptyResponseChan: make(chan error),
@@ -98,7 +121,7 @@ func NewGzipDiskQueue(name string, dataPath string, topic string, archivePath st
 		exitSyncChan:      make(chan int),
 		syncEvery:         syncEvery,
 	}
-
+	d.parseStartEndTime(channel)
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
@@ -111,11 +134,35 @@ func NewGzipDiskQueue(name string, dataPath string, topic string, archivePath st
 	return &d
 }
 
+func (d *GzipDiskQueue) parseStartEndTime(channel string) error {
+	matches := channelTimeFrameFormat.FindStringSubmatch(channel)
+	var start time.Time
+	var end time.Time
+	if len(matches) != 3 {
+		return errors.New("invalid channel")
+	}
+	start, err := time.Parse("060102", matches[1])
+	if err != nil {
+		return err
+	}
+	if matches[2] == "now" {
+		end = time.Now()
+	} else {
+		end, err = time.Parse("060102", matches[2])
+		if err != nil {
+			return err
+		}
+	}
+	d.startRange = start
+	d.endRange = end
+	return nil
+}
+
 // reads a manifest file of the name topic.MANIFEST
 // where each line is a `filename + : + record_count + \n`
 // any files referenced in the manifest that don't exist will just be skipped
 func (d *GzipDiskQueue) loadManifest() error {
-	manifestFile := path.Join(d.dataPath, fmt.Sprintf("%s.MANIFEST", d.topic))
+	manifestFile := path.Join(d.archivePath, fmt.Sprintf("%s.MANIFEST", d.topic))
 	f, err := os.OpenFile(manifestFile, os.O_RDONLY, 0600)
 	defer f.Close()
 	if err != nil {
@@ -140,7 +187,9 @@ func (d *GzipDiskQueue) loadManifest() error {
 			continue
 		}
 
-		fullPath := path.Join(d.dataPath, chunks[0])
+		// TODO filter based on startRange, endRange
+
+		fullPath := path.Join(d.archivePath, chunks[0])
 		f, err = os.OpenFile(fullPath, os.O_RDONLY, 0600)
 		if err != nil {
 			log.Printf("unable to open %s. skipping", chunks[0])

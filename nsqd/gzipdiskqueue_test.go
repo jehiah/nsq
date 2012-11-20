@@ -37,22 +37,22 @@ func TestGzipDiskQueue(t *testing.T) {
 	filename := "topic.server.2012-11-19_10.log.gz"
 	recordCount := 10
 
-	dataDir := os.TempDir()
-	log.Printf("data dir is %s", dataDir)
-	file, err := newFile(filename, dataDir)
+	archiveDir := os.TempDir()
+	log.Printf("archiveDir is %s", archiveDir)
+	file, err := newFile(filename, archiveDir)
 	assert.Equal(t, err, nil)
 	gzipWriter := gzip.NewWriter(file)
 	writeRecords(gzipWriter, recordCount)
 	gzipWriter.Close()
 	file.Close()
 
-	file, err = newFile("topic.MANIFEST", dataDir)
+	file, err = newFile("topic.MANIFEST", archiveDir)
 	assert.Equal(t, err, nil)
 	file.WriteString(fmt.Sprintf("%s:%d\n", filename, recordCount))
 	file.Close()
 
-	dqName := "testgz-20121118-20121119"
-	dq := NewGzipDiskQueue(dqName, os.TempDir(), "topic", dataDir, 2500)
+	channel := "testgz-20121118-20121119"
+	dq := NewGzipDiskQueue("topic", channel, os.TempDir(), archiveDir, 2500)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(recordCount))
 
