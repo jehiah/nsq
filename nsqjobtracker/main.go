@@ -11,7 +11,8 @@ import (
 
 var (
 	showVersion      = flag.Bool("version", false, "print version string")
-	httpAddress      = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
+	httpAddress      = flag.String("http-address", "0.0.0.0:4172", "<addr>:<port> to listen on for HTTP clients")
+	dataPath         = flag.String("data-path", "", "path to store disk-backed messages")
 	lookupdHTTPAddrs = util.StringArray{}
 	nsqdHTTPAddrs    = util.StringArray{}
 )
@@ -52,16 +53,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	jt := NewJobTracker(*dataPath)
 	httpListener, err := net.Listen("tcp", httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr, err.Error())
 	}
-	waitGroup.Wrap(func() { httpServer(httpListener) })
+	waitGroup.Wrap(func() { jt.httpServer(httpListener) })
 
 	<-exitChan
 
 	httpListener.Close()
-
 	waitGroup.Wait()
+	jt.Sync()
 }

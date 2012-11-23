@@ -87,7 +87,7 @@ func (n *NSQd) Main() {
 }
 
 func (n *NSQd) LoadMetadata() {
-	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+	fn := path.Join(n.options.dataPath, fmt.Sprintf("nsqd.%d.dat", n.workerId))
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -128,7 +128,7 @@ func (n *NSQd) Exit() {
 
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
-	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+	fn := path.Join(n.options.dataPath, fmt.Sprintf("nsqd.%d.dat", n.workerId))
 	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())

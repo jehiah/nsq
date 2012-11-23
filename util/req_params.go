@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 type ReqParams struct {
@@ -24,6 +25,15 @@ func NewReqParams(req *http.Request) (*ReqParams, error) {
 	}
 
 	return &ReqParams{reqParams, data}, nil
+}
+
+func (r *ReqParams) GetInt(key string) (int, error) {
+	v, err := r.Get(key)
+	if err != nil {
+		return 0, err
+	}
+	i, err := strconv.Atoi(v)
+	return i, err
 }
 
 func (r *ReqParams) Get(key string) (string, error) {

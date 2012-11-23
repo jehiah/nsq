@@ -1,22 +1,25 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 )
 
-func httpServer(listener net.Listener) {
+func (jt *JobTracker) httpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
 
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
-	handler.HandleFunc("/new_job", newJobHandler)
-	handler.HandleFunc("/stop_job", stopJobHandler)
-	handler.HandleFunc("/jobs", jobsHandler)
+	handler.Handle("/job/", jt)
 
 	server := &http.Server{
 		Handler: handler,
@@ -35,43 +38,84 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func jobsHandler(w http.ResponseWriter, req *http.Request) {
-	data := make(map[string]interface{})
-	data["jobs"] = nil
-	util.ApiResponse(w, 200, "OK", data)
-}
+func (jt *JobTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var urlRegex = regexp.MustCompile("^/job/(.*)$")
+	matches := urlRegex.FindStringSubmatch(req.URL.Path)
+	if len(matches) == 0 {
+		util.ApiResponse(w, 500, "INVALID_JOB_ID", nil)
+		return
+	}
+	parts := strings.Split(matches[1], "/")
+	jobId := parts[0]
 
-func newJobHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
-	_, err = reqParams.Get("workers")
-	if err != nil {
-		util.ApiResponse(w, 500, "MISSING_ARG_WORKERS", nil)
+	if jobId == "new" {
+		jt.newJob(w, req, reqParams)
 		return
 	}
 
-	data := make(map[string]interface{})
-	data["job"] = nil
-	util.ApiResponse(w, 200, "OK", data)
+	// lookup the job
+	job, ok := jt.Jobs[jobId]
+	if !ok {
+		util.ApiResponse(w, 404, "JOB_NOT_FOUND", nil)
+		return
+	}
+
+	util.ApiResponse(w, 200, "OK", job)
 }
 
-func stopJobHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *util.ReqParams) {
+	var err error
+	var topics []string
+	var name string
+	var jobId string
+	var job *Job
+	workerCount, err := args.GetInt("workers")
 	if err != nil {
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
+		goto errorResponse
+	}
+	topics, err = args.GetAll("topic")
+	if err != nil {
+		goto errorResponse
+	}
+	for _, t := range topics {
+		if !nsq.IsValidTopicName(t) {
+			err = errors.New("Invalid Topic")
+			goto errorResponse
+		}
+	}
+	name, err = args.Get("name")
+	// max name size = 48 - prefix(8) + date(18)
+	if err != nil || !nsq.IsValidChannelName(name) || len(name) >= 22 {
+		err = errors.New("INVALID_ARG_NAME")
+		goto errorResponse
 	}
 
-	_, err = reqParams.Get("id")
-	if err != nil {
-		util.ApiResponse(w, 500, "MISSING_ARG_ID", nil)
-		return
+	jobId = jt.nextJobID()
+	job = &Job{
+		ID:          jobId,
+		Started:     time.Now().Unix(),
+		WorkerCount: workerCount,
+		Topics:      topics,
+		Name:        name,
+		NSQPrefix:   fmt.Sprintf("job-%s-%s", jobId, name),
 	}
+	jt.Jobs[jobId] = job
+	log.Printf("New Job %s", job)
 
-	data := make(map[string]interface{})
-	util.ApiResponse(w, 200, "OK", data)
+	// TODO subscribe the job to each topic
+	util.ApiResponse(w, 200, "OK", job)
+	return
+
+errorResponse:
+	if err == nil {
+		err = errors.New("INTERNAL_ERROR")
+	}
+	log.Printf("error %s", err.Error())
+	util.ApiResponse(w, 500, err.Error(), nil)
 }
