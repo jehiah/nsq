@@ -195,7 +195,7 @@ func NewGzipDiskQueue(topic string, channel string, dataPath string, archivePath
 	// no need to lock here, nothing else could possibly be touching this instance
 	err = d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		log.Printf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
+		log.Printf("ERROR: DISKQUEUE(%s) failed to retrieveMetaData - %s", d.name, err.Error())
 	} else if err != nil {
 		manifest, err := OpenManifestFile(archivePath, topic)
 		if err != nil {

@@ -1,8 +1,7 @@
 build
 nsqd/nsqd
 nsqlookupd/nsqlookupd
-nsqreader/nsqreader
-nsqstatsd/nsqstatsd
+nsqjobtracker/nsqjobtracker
 nsqadmin/nsqadmin
 examples/bench_reader/bench_reader
 examples/bench_writer/bench_writer
