@@ -17,6 +17,7 @@ type Job struct {
 	WorkerCount int      `json:"worker_count"`
 	Name        string   `json:"name"`
 	Topics      []string `json:"topics"`
+	Timeframe   string   `json:"timeframe"` // TODO: in theory it'd be nice to have topic dependant timeframess
 	NSQPrefix   string   `json:"nsq_prefix"`
 }
 
@@ -25,10 +26,12 @@ func (j *Job) String() string {
 }
 
 type JobTracker struct {
-	sync.Mutex
-	Jobs     map[string]*Job `json:"jobs"`
-	LastID   int             `json:"last_id"`
-	fileName string
+	sync.Mutex           `json:"-"`
+	Jobs                 map[string]*Job `json:"jobs"`
+	LastID               int             `json:"last_id"`
+	nsqdHTTPAddresses    []string        `json:"-"`
+	lookupdHTTPAddresses []string        `json:"-"`
+	fileName             string          `json:"-"`
 }
 
 func loadJobTrackerFromFile(f *os.File) (*JobTracker, error) {

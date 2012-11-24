@@ -54,6 +54,8 @@ func main() {
 		log.Fatal(err)
 	}
 	jt := NewJobTracker(*dataPath)
+	jt.nsqdHTTPAddresses = nsqdHTTPAddrs
+	jt.lookupdHTTPAddresses = lookupdHTTPAddrs
 	httpListener, err := net.Listen("tcp", httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr, err.Error())

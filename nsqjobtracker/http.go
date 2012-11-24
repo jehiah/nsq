@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -75,6 +76,7 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 	var name string
 	var jobId string
 	var job *Job
+	var timeframePattern = regexp.MustCompile("^[0-9]{6}-[0-9]{6}$")
 	workerCount, err := args.GetInt("workers")
 	if err != nil {
 		goto errorResponse
@@ -89,6 +91,12 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 			goto errorResponse
 		}
 	}
+	timeframe, err = args.Get("timeframe")
+	if err != nil || !timeframePattern.MatchString(timeframe) {
+		err = errors.New("INVALID_ARG_TIMEFRAME")
+		goto errorResponse
+	}
+
 	name, err = args.Get("name")
 	// max name size = 48 - prefix(8) + date(18)
 	if err != nil || !nsq.IsValidChannelName(name) || len(name) >= 22 {
@@ -102,6 +110,7 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 		Started:     time.Now().Unix(),
 		WorkerCount: workerCount,
 		Topics:      topics,
+		Timeframe:   timeframe,
 		Name:        name,
 		NSQPrefix:   fmt.Sprintf("job-%s-%s", jobId, name),
 	}
@@ -109,6 +118,23 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 	log.Printf("New Job %s", job)
 
 	// TODO subscribe the job to each topic
+	// TODO: use lookupd when present
+	// TODO: check nsqd's first for topic before creating
+	// keep track of the nsqd's to check
+	for _, t := range job.Topics {
+		channel := fmt.Sprintf("%s-%s", job.NSQPrefix, job.Timeframe)
+		for _, addr := range jt.nsqdHTTPAddresses {
+			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
+				addr, url.QueryEscape(t), url.QueryEscape(channel))
+			log.Printf("NSQD: querying %s", endpoint)
+			_, err := nsq.ApiRequest(endpoint)
+			if err != nil {
+				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+				continue
+			}
+		}
+	}
+
 	util.ApiResponse(w, 200, "OK", job)
 	return
 
