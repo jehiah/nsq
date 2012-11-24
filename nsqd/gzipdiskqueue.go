@@ -1,7 +1,9 @@
 package main
 
 import (
+	"../nsq"
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -157,15 +159,16 @@ func OpenManifestFile(p string, topic string) (*Manifest, error) {
 // ...-YYYYMMDD-YYYYMMDD
 var channelTimeFrameFormat = regexp.MustCompile(`^[-\.a-zA-Z0-9_]+-([0-9]{8})-([0-9]{8}|now)$`)
 
-func IsGzipDiskChannel(topic string, archivePath, channel string) bool {
+func IsGzipDiskTopicChannel(topic string, channel string, archivePath string) bool {
 	// if it's a valid channel name, and a topic.MANIFEST file exists
 	if !channelTimeFrameFormat.MatchString(channel) {
 		return false
 	}
 	manifestFile := path.Join(archivePath, fmt.Sprintf("%s.MANIFEST", topic))
+	log.Printf("checking for %s", manifestFile)
 	f, err := os.OpenFile(manifestFile, os.O_RDONLY, 0600)
-	defer f.Close()
-	if err != nil {
+	if err == nil {
+		f.Close()
 		return true
 	}
 	return false
@@ -335,7 +338,13 @@ func (d *GzipDiskQueue) readOne() ([]byte, error) {
 
 	readBuf := make([]byte, len(line))
 	copy(readBuf, line)
-	return readBuf, nil
+
+	// TODO: this is strange and backwards, but we need to read the bytes, 
+	// make a message, and then serialize that. inneficient at best, but we have to hand back message types
+	msg := nsq.NewMessage(<-nsqd.idChan, readBuf)
+	var buf bytes.Buffer
+	err = msg.Write(&buf)
+	return buf.Bytes(), nil
 }
 
 // sync fsyncs the current writeFile and persists metadata
@@ -452,7 +461,6 @@ func (d *GzipDiskQueue) ioLoop() {
 		// in a select are skipped, we set r to d.readChan only when there is data to read
 		// and reset it to nil after writing to the channel
 		case r <- dataRead:
-			log.Printf("returned data from readOne() - %v. depth: %d", dataRead, d.Depth())
 			atomic.AddInt64(&d.currentFile.position, 1)
 			atomic.AddInt64(&d.depth, -1)
 		case <-d.emptyChan:

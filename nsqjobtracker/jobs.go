@@ -1,24 +1,27 @@
 package main
 
 import (
+	"../nsq"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"os"
 	"path"
 	"sync"
 )
 
 type Job struct {
-	ID          string   `json:"id"`
-	Started     int64    `json:"started_at"`
-	Stopped     int64    `json:"stopped_at,omitempty"`
-	WorkerCount int      `json:"worker_count"`
-	Name        string   `json:"name"`
-	Topics      []string `json:"topics"`
-	Timeframe   string   `json:"timeframe"` // TODO: in theory it'd be nice to have topic dependant timeframess
-	NSQPrefix   string   `json:"nsq_prefix"`
+	ID                string   `json:"id"`
+	Started           int64    `json:"started_at"`
+	Stopped           int64    `json:"stopped_at,omitempty"`
+	WorkerCount       int      `json:"worker_count"`
+	Name              string   `json:"name"`
+	Topics            []string `json:"topics"`
+	Timeframe         string   `json:"timeframe"` // TODO: in theory it'd be nice to have topic dependant timeframess
+	NSQPrefix         string   `json:"nsq_prefix"`
+	NsqdHTTPAddresses []string `json:"nsqd_http_addresses"` // todo base on lookupd, or record as private here
 }
 
 func (j *Job) String() string {
@@ -107,4 +110,33 @@ func (jt *JobTracker) Sync() error {
 	}
 	f.Close()
 	return os.Rename(tmpFileName, jt.fileName)
+}
+
+func (j *Job) Start() {
+	log.Printf("New %s", j)
+	// TODO: use lookupd when present
+	// TODO: check nsqd's first for topic before creating
+	for _, t := range j.Topics {
+		channel := fmt.Sprintf("%s-%s", j.NSQPrefix, j.Timeframe)
+		for _, addr := range j.NsqdHTTPAddresses {
+			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
+				addr, url.QueryEscape(t), url.QueryEscape(channel))
+			log.Printf("NSQD: querying %s", endpoint)
+			_, err := nsq.ApiRequest(endpoint)
+			if err != nil {
+				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+				continue
+			}
+		}
+	}
+
+	// todo: set the nsqaddr's in the job, and .start() or something like that.
+	for _, addr := range j.NsqdHTTPAddresses {
+		go j.WatchSourceChannelCompletion(addr)
+	}
+
+}
+
+func (j *Job) WatchSourceChannelCompletion(addr string) {
+	// TODO: poll nsqd's using a waitgroup
 }

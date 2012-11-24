@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -66,8 +65,9 @@ func (jt *JobTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		util.ApiResponse(w, 404, "JOB_NOT_FOUND", nil)
 		return
 	}
-
-	util.ApiResponse(w, 200, "OK", job)
+	data := make(map[string]interface{})
+	data["job"] = job
+	util.ApiResponse(w, 200, "OK", data)
 }
 
 func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *util.ReqParams) {
@@ -76,11 +76,11 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 	var name string
 	var jobId string
 	var job *Job
+	var workers []interface{}
 	var timeframe string
-	var addr string
-	var meta_topic string
-	var endpoint string
-	var timeframePattern = regexp.MustCompile("^[0-9]{6}-[0-9]{6}$")
+	var timeframePattern = regexp.MustCompile("^[0-9]{8}-([0-9]{8}|now)$")
+	data := make(map[string]interface{})
+
 	workerCount, err := args.GetInt("workers")
 	if err != nil {
 		goto errorResponse
@@ -101,8 +101,8 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 		goto errorResponse
 	}
 
+	// max name size = 48 - prefix(8) - date(18)
 	name, err = args.Get("name")
-	// max name size = 48 - prefix(8) + date(18)
 	if err != nil || !nsq.IsValidChannelName(name) || len(name) >= 22 {
 		err = errors.New("INVALID_ARG_NAME")
 		goto errorResponse
@@ -110,59 +110,28 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 
 	jobId = jt.nextJobID()
 	job = &Job{
-		ID:          jobId,
-		Started:     time.Now().Unix(),
-		WorkerCount: workerCount,
-		Topics:      topics,
-		Timeframe:   timeframe,
-		Name:        name,
-		NSQPrefix:   fmt.Sprintf("job-%s-%s", jobId, name),
+		ID:                jobId,
+		Started:           time.Now().Unix(),
+		WorkerCount:       workerCount,
+		Topics:            topics,
+		Timeframe:         timeframe,
+		Name:              name,
+		NSQPrefix:         fmt.Sprintf("job-%s-%s", jobId, name),
+		NsqdHTTPAddresses: jt.nsqdHTTPAddresses, // todo lookup from lookupd first based on topic
 	}
 	jt.Jobs[jobId] = job
-	log.Printf("New Job %s", job)
-
-	// TODO subscribe the job to each topic
-	// TODO: use lookupd when present
-	// TODO: check nsqd's first for topic before creating
-	// keep track of the nsqd's to check
-	for _, t := range job.Topics {
-		channel := fmt.Sprintf("%s-%s", job.NSQPrefix, job.Timeframe)
-		for _, addr := range jt.nsqdHTTPAddresses {
-			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
-				addr, url.QueryEscape(t), url.QueryEscape(channel))
-			log.Printf("NSQD: querying %s", endpoint)
-			_, err := nsq.ApiRequest(endpoint)
-			if err != nil {
-				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-				continue
-			}
-		}
-	}
-
-	// TODO: get a real value for nsqd endpoint
-	// perhaphs this should be based on lookupd's?
-	addr = "127.0.0.1:4151"
-	meta_topic = fmt.Sprintf("%s-%s-%d", job.NSQPrefix)
-	endpoint = fmt.Sprintf("http://%s/create_topic?topic=%s", addr, url.QueryEscape(meta_topic))
-	log.Printf("NSQD: querying %s", endpoint)
-	_, err = nsq.ApiRequest(endpoint)
-	if err != nil {
-		log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-	}
+	job.Start()
 
 	for i := 0; i < job.WorkerCount; i += 1 {
-		channel := fmt.Sprintf("worker-%d", i)
-		endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
-			addr, url.QueryEscape(meta_topic), url.QueryEscape(channel))
-		log.Printf("NSQD: querying %s", endpoint)
-		_, err := nsq.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
+		w := make(map[string]interface{})
+		w["id"] = i
+		w["url"] = fmt.Sprintf("http://%s/job/%s/worker/%d", req.URL.Host, job.Name, i)
+		workers = append(workers, w)
 	}
 
-	util.ApiResponse(w, 200, "OK", job)
+	data["job"] = job
+	data["workers"] = workers
+	util.ApiResponse(w, 200, "OK", data)
 	return
 
 errorResponse:

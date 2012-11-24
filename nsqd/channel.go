@@ -102,7 +102,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 		c.ephemeralChannel = true
 		c.backend = NewDummyBackendQueue()
 	} else {
-		if options.archivePath != "" && IsGzipDiskChannel(topicName, channelName, options.archivePath) {
+		if options.archivePath != "" && IsGzipDiskTopicChannel(topicName, channelName, options.archivePath) {
 			c.backend = NewGzipDiskQueue(topicName, channelName, options.dataPath, options.archivePath, options.syncEvery)
 		} else {
 			c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile, options.syncEvery)
