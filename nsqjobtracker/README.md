@@ -12,4 +12,4 @@ The job tracker manages metadata for running jobs on archived nsqd data. It coor
         -> returns job id
  * /stop_job - pushes messages into the job channel
 
- poll nsqds; on source topic completion, push message through metadata channel
+poll nsqds; on source topic completion, push message through metadata channel

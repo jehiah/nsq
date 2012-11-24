@@ -76,6 +76,10 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 	var name string
 	var jobId string
 	var job *Job
+	var timeframe string
+	var addr string
+	var meta_topic string
+	var endpoint string
 	var timeframePattern = regexp.MustCompile("^[0-9]{6}-[0-9]{6}$")
 	workerCount, err := args.GetInt("workers")
 	if err != nil {
@@ -132,6 +136,29 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
 				continue
 			}
+		}
+	}
+
+	// TODO: get a real value for nsqd endpoint
+	// perhaphs this should be based on lookupd's?
+	addr = "127.0.0.1:4151"
+	meta_topic = fmt.Sprintf("%s-%s-%d", job.NSQPrefix)
+	endpoint = fmt.Sprintf("http://%s/create_topic?topic=%s", addr, url.QueryEscape(meta_topic))
+	log.Printf("NSQD: querying %s", endpoint)
+	_, err = nsq.ApiRequest(endpoint)
+	if err != nil {
+		log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+	}
+
+	for i := 0; i < job.WorkerCount; i += 1 {
+		channel := fmt.Sprintf("worker-%d", i)
+		endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
+			addr, url.QueryEscape(meta_topic), url.QueryEscape(channel))
+		log.Printf("NSQD: querying %s", endpoint)
+		_, err := nsq.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+			continue
 		}
 	}
 
