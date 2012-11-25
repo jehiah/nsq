@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"strings"
+	"strconv"
 	"time"
 )
 
@@ -69,10 +70,18 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func infoHandler(w http.ResponseWriter, req *http.Request) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("unable to get hostname %s", err.Error())
+	}
 	util.ApiResponse(w, 200, "OK", struct {
 		Version string `json:"version"`
+		TcpAddress string `json:"tcp_address"`
+		HttpAddress string `json:"http_address"`
 	}{
 		Version: util.BINARY_VERSION,
+		TcpAddress: net.JoinHostPort(hostname, strconv.Itoa(nsqd.tcpAddr.Port)),
+		HttpAddress: net.JoinHostPort(hostname, strconv.Itoa(nsqd.httpAddr.Port)),
 	})
 }
 

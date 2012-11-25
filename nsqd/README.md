@@ -37,7 +37,7 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
 
 * `/info`
 
-    returns version information
+    returns version information, and tcp/http port information
 
 ### Command Line Options
 

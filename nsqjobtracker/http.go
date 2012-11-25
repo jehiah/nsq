@@ -67,6 +67,10 @@ func (jt *JobTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	data := make(map[string]interface{})
 	data["job"] = job
+	// these make it easy for workers to bootstrap their information
+	data["lookupd_http_addresses"] = lookupdHTTPAddrs
+	data["nsqd_tcp_addresses"] = nsqdTCPAddrs
+	data["nsqd_http_addresses"] = nsqdHTTPAddrs
 	util.ApiResponse(w, 200, "OK", data)
 }
 
@@ -125,7 +129,7 @@ func (jt *JobTracker) newJob(w http.ResponseWriter, req *http.Request, args *uti
 	for i := 0; i < job.WorkerCount; i += 1 {
 		w := make(map[string]interface{})
 		w["id"] = i
-		w["url"] = fmt.Sprintf("http://%s/job/%s/worker/%d", req.URL.Host, job.Name, i)
+		w["url"] = fmt.Sprintf("http://%s/job/%s/worker/%d", req.Host, jobId, i)
 		workers = append(workers, w)
 	}
 

@@ -4,6 +4,8 @@ import (
 	"../nsq"
 	"encoding/json"
 	"fmt"
+	"github.com/bitly/go-simplejson"
+	"time"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -131,12 +133,79 @@ func (j *Job) Start() {
 	}
 
 	// todo: set the nsqaddr's in the job, and .start() or something like that.
-	for _, addr := range j.NsqdHTTPAddresses {
-		go j.WatchSourceChannelCompletion(addr)
-	}
+	go j.WatchSourceChannelCompletion()
 
 }
 
-func (j *Job) WatchSourceChannelCompletion(addr string) {
-	// TODO: poll nsqd's using a waitgroup
+func (j *Job) WatchSourceChannelCompletion() {
+	// TODO: poll nsqd's (using a waitgroup?)
+	// TODO: what do do after this is done?
+
+	log.Printf("JOB(%s): starting poll of nsqd channels for %s", j.NSQPrefix, j.Topics)
+	finishedTopics := make(map[string]bool)
+	for _, t := range j.Topics {
+		finishedTopics[t] = false
+	}
+
+	for {
+		finishedAll := true
+		for t, finished := range finishedTopics {
+			if finished {
+				continue
+			}
+			channelName := fmt.Sprintf("%s-%s", j.NSQPrefix, j.Timeframe)
+			finished = true
+			for _, addr := range j.NsqdHTTPAddresses {
+				endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+				log.Printf("NSQD: querying %s", endpoint)
+				stats, err := nsq.ApiRequest(endpoint)
+				if err != nil {
+					log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+					continue
+				}
+				if !isTopicChannelFinished(stats, t, channelName) {
+					finished = false
+				}
+			}
+			if finished == false {
+				finishedAll = false
+			} else {
+				log.Printf("JOB(%s) source channel for %s:%s finished", j.NSQPrefix, t, channelName)
+				finishedTopics[t] = finished
+			}
+		}
+		if finishedAll {
+			break
+		}
+		time.Sleep(time.Duration(30) * time.Second)
+	}
+	log.Printf("JOB(%s): finished polling nsqd's", j.NSQPrefix)
+	j.Stopped = time.Now().Unix()
+
+}
+
+func isTopicChannelFinished(data *simplejson.Json, selectedTopic string, selectedChannel string) bool {
+	topics, _ := data.Get("topics").Array()
+	for _, topicInfo := range topics {
+		topicInfo := topicInfo.(map[string]interface{})
+		topicName := topicInfo["topic_name"].(string)
+		if selectedTopic != topicName {
+			continue
+		}
+		channels := topicInfo["channels"].([]interface{})
+		for _, c := range channels {
+			c := c.(map[string]interface{})
+			channelName := c["channel_name"].(string)
+			if selectedChannel != channelName {
+				continue
+			}
+			deferredCount := int64(c["deferred_count"].(float64))
+			depth := int64(c["depth"].(float64))
+			log.Printf("Toipc: %s Channel: %s Depth: %d Deferred: %d", topicName, channelName, depth, deferredCount)
+			if deferredCount+depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
