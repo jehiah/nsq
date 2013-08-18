@@ -1,12 +1,10 @@
 // This is an NSQ client that reads the specified topic/channel
-// and relays it to one (or more) NSQD instances. This is particularly
-// useful for relaying data between datacenters, or to relay to a new topic
+// and re-publishes the messages to destination nsqd via TCP
 
 package main
 
 import (
-	"bytes"
-	"errors"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"github.com/bitly/go-hostpool"
@@ -14,14 +12,12 @@ import (
 	"github.com/bitly/nsq/util"
 	"log"
 	"math"
-	"math/rand"
-	"net/url"
 	"os"
 	"os/signal"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
+	"math/rand"
 )
 
 const (
@@ -33,22 +29,27 @@ var (
 	showVersion        = flag.Bool("version", false, "print version string")
 	topic              = flag.String("topic", "", "nsq topic")
 	channel            = flag.String("channel", "nsq_to_http", "nsq channel")
+	destTopic          = flag.String("destination-topic", "", "destination nsq topic")
 	maxInFlight        = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	verbose            = flag.Bool("verbose", false, "enable verbose logging")
-	mode               = flag.String("mode", "", "the upstream request mode options: round-robin, hostpool")
 	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
-	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status, 0 disables")
+	numPublishers      = flag.Int("n", 2, "number of concurrent publishers")
+	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
+	mode               = flag.String("mode", "", "the upstream request mode options: round-robin (default), hostpool")
 	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "the maximum backoff duration")
 
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
-	nsqDestTCPAddrs  = util.StringArray{}
+	nsqdTCPAddrs       = util.StringArray{}
+	lookupdHTTPAddrs   = util.StringArray{}
+	destNsqdTCPAddrs   = util.StringArray{}
+
+	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
+	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
 )
 
 func init() {
-	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address [source] (may be given multiple times)")
+	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
-	flag.Var(&nsqdDestTCPAddrs, "dest-nsqd-tcp-address", "nsqd TCP address [destination] (may be given multiple times)")
 }
 
 type Durations []time.Duration
@@ -65,25 +66,34 @@ func (s Durations) Less(i, j int) bool {
 	return s[i] < s[j]
 }
 
-type Publisher interface {
-	Publish(string, []byte) error
-}
-
 type PublishHandler struct {
-	Publisher
 	addresses util.StringArray
-	counter   uint64
+	writers   map[string]*Writer
 	mode      int
+	counter   uint64
 	hostPool  hostpool.HostPool
 	reqs      Durations
 	id        int
 }
 
-func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
+func (ph *PublishHandler) HandleMessage(m *nsq.Message, respChan chan *nsq.FinishedMessage) error {
 	var startTime time.Time
 
+	transaction := &publishMessage{
+		topic: *destTopic,
+		msg: m,
+		fin: respChan
+	}
+	finishThisMessage := func(err error) {
+		respChan <- &nsq.FinishedMessage{
+			Id:             m.Id,
+			RequeueDelayMs: (time.Duration(90) * time.Second * m.Attempts) / time.Milisecond,
+			Success:        err == nil,
+		}
+	}
+
 	if *throttleFraction < 1.0 && rand.Float64() > *throttleFraction {
-		return nil
+	        return nil
 	}
 
 	if *statusEvery > 0 {
@@ -93,17 +103,20 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	switch ph.mode {
 	case ModeRoundRobin:
 		idx := ph.counter % uint64(len(ph.addresses))
-		err := ph.Publish(ph.addresses[idx], m.Body)
+		writer := ph.writers[ph.addresses[idx]]
+		_, _, err := writer.Publish(*destTopic, m.Body)
 		if err != nil {
-			return err
+			finishThisMessage(err)
+		} else {
+			ph.counter++
 		}
-		ph.counter++
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
-		err := ph.Publish(hostPoolResponse.Host(), m.Body)
+		writer := ph.writers[hostPoolResponse.Host()]
+		_, _, err := writer.Publish(*destTopic, m.Body)
 		hostPoolResponse.Mark(err)
 		if err != nil {
-			return err
+			finishThisMessage(err)
 		}
 	}
 
@@ -141,8 +154,6 @@ func percentile(perc float64, arr []time.Duration, length int) time.Duration {
 }
 
 func main() {
-	var publisher Publisher
-	var addresses util.StringArray
 	var selectedMode int
 
 	flag.Parse()
@@ -156,6 +167,10 @@ func main() {
 		log.Fatalf("--topic and --channel are required")
 	}
 
+	if *destTopic == "" {
+		*destTopic = *topic
+	}
+
 	if *maxInFlight < 0 {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
@@ -167,8 +182,8 @@ func main() {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
-	if len(nsqdDestTCPAddres) == 0 {
-		log.Fatalf("--dest-nsqd-tcp-address required")
+	if len(destNsqdTCPAddrs) == 0 {
+		log.Fatalf("--destination-nsqd-tcp-address required")
 	}
 
 	switch *mode {
@@ -176,12 +191,6 @@ func main() {
 		selectedMode = ModeRoundRobin
 	case "hostpool":
 		selectedMode = ModeHostPool
-	default:
-		log.Fatalf("unknown --mode=%v", *mode)
-	}
-
-	if *throttleFraction > 1.0 || *throttleFraction < 0.0 {
-		log.Fatalf("ERROR: --throttle-fraction must be between 0.0 and 1.0")
 	}
 
 	termChan := make(chan os.Signal, 1)
@@ -195,16 +204,30 @@ func main() {
 	r.SetMaxBackoffDuration(*maxBackoffDuration)
 	r.VerboseLogging = *verbose
 
-	for i := 0; i < *numPublishers; i++ {
-		handler := &PublishHandler{
-			Publisher: publisher,
-			addresses: addresses,
-			mode:      selectedMode,
-			reqs:      make(Durations, 0, *statusEvery),
-			id:        i,
-			hostPool:  hostpool.New(addresses),
+	if *tlsEnabled {
+		r.TLSv1 = true
+		r.TLSConfig = &tls.Config{
+			InsecureSkipVerify: *tlsInsecureSkipVerify,
 		}
-		r.AddHandler(handler)
+	}
+
+	writers := make(map[string]*nsq.Writer)
+	for _, addr := range destNsqdTCPAddrs {
+		writer := NewWriter(int((nsq.DefaultClientTimeout / 2) / time.Millisecond))
+		writer.ConnectToNSQ(addr)
+		writers[addr] = writer
+	}
+
+	handler := &PublishHandler{
+		addresses: destNsqdTCPAddrs,
+		writers:   writers,
+		mode:      selectedMode,
+		reqs:      make(Durations, 0, *statusEvery),
+		id:        i,
+		hostPool:  hostpool.New(destNsqdTCPAddrs),
+	}
+	for i := 0; i < *numPublishers; i++ {
+		r.AddAsyncHandler(handler)
 	}
 
 	for _, addrString := range nsqdTCPAddrs {

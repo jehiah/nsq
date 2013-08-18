@@ -37,13 +37,12 @@ func NewWriter(heartbeatInterval int) *Writer {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
 	w := &Writer{
-		transactionChan:   make(chan *writerTransaction),
 		exitChan:          make(chan int),
 		WriteTimeout:      time.Second,
 		ShortIdentifier:   strings.Split(hostname, ".")[0],
 		LongIdentifier:    hostname,
-			writeChan: make(chan *publishMessage),
-				transactions: []*publishMessage,
+		writeChan: make(chan *publishMessage),
+		transactions: []*publishMessage,
 	}
 	return w
 }
@@ -147,7 +146,11 @@ func (w *Writer) messageRouter() {
 				}
 			} else {
 				t, w.transactions = w.transactions[0], w.transactions[1:]
-				t.fin <- &nsq.FinishedMessage{t.msg.Id, 0, true}
+				t.fin <- &nsq.FinishedMessage{
+					Id:             t.msg.Id,
+					RequeueDelayMs: (time.Duration(90) * time.Second * t.msg.Attempts) / time.Milisecond,
+					Success:        true,
+				}
 			}
 		case <-this.exitChan:
 			return
