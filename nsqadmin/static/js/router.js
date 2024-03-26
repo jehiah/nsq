@@ -11,7 +11,7 @@ var Router = Backbone.Router.extend({
             return AppState.basePath(p).substring(1);
         };
         this.route(bp('/'), 'topics');
-        this.route(bp('/visualize/topics/(:topic)(/:channel)'), 'visualize');
+        this.route(bp('/topology/topics/(:topic)(/:channel)'), 'topology');
         this.route(bp('/topics/(:topic)(/:channel)'), 'topic');
         this.route(bp('/lookup'), 'lookup');
         this.route(bp('/nodes(/:node)'), 'nodes');
@@ -39,12 +39,12 @@ var Router = Backbone.Router.extend({
         Pubsub.trigger('topic:show', topic);
     },
 
-    visualize: function(topic, channel) {
+    topology: function(topic, channel) {
         if (channel !== null) {
-            Pubsub.trigger('visualize:show', topic, channel);
+            Pubsub.trigger('topology:show', topic, channel);
             return;
         }
-        Pubsub.trigger('visualize:show', topic);
+        Pubsub.trigger('topology:show', topic);
     },
 
     lookup: function() {

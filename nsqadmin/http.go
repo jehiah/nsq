@@ -89,7 +89,7 @@ func NewHTTPServer(nsqadmin *NSQAdmin) *httpServer {
 	router.Handle("GET", bp("/topics"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", bp("/visualize/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/topology/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/nodes"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/nodes/:node"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/counter"), http_api.Decorate(s.indexHandler, log))

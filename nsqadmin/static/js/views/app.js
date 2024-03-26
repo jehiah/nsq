@@ -17,7 +17,7 @@ var LookupView = require('./lookup');
 var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
-var VisualizeView = require('./visualize');
+var TopologyView = require('./topology');
 
 var NodeModel = require('../models/node');
 var TopicModel = require('../models/topic');
@@ -43,7 +43,7 @@ var AppView = BaseView.extend({
         this.listenTo(Pubsub, 'nodes:show', this.showNodes);
         this.listenTo(Pubsub, 'node:show', this.showNode);
         this.listenTo(Pubsub, 'counter:show', this.showCounter);
-        this.listenTo(Pubsub, 'visualize:show', this.showVisualize);
+        this.listenTo(Pubsub, 'topology:show', this.showTopology);
 
 
         this.listenTo(Pubsub, 'view:ready', function() {
@@ -104,14 +104,14 @@ var AppView = BaseView.extend({
         });
     },
 
-    showVisualize: function(topic, channel) {
+    showTopology: function(topic, channel) {
         this.showView(function() {
             var model = new ChannelModel({
                 'topic': topic,
                 'name': channel,
                 'isAdmin': AppState.get('IS_ADMIN')
             });
-            return new VisualizeView({'model': model});
+            return new TopologyView({'model': model});
         });
     },
 

@@ -9,7 +9,7 @@ var AppState = require('../app_state');
 
 var BaseView = require('./base');
 
-var VisualizeView = BaseView.extend({
+var TopologyView = BaseView.extend({
     className: 'channel container-fluid',
 
     template: require('./spinner.hbs'),
@@ -24,7 +24,7 @@ var VisualizeView = BaseView.extend({
         var isAdmin = this.model.get('isAdmin');
         this.model.fetch()
             .done(function(data) {
-                this.template = require('./visualize.hbs');
+                this.template = require('./topology.hbs');
                 this.render({'message': data['message'], 'isAdmin': isAdmin});
             }.bind(this))
             .fail(this.handleViewError.bind(this))
@@ -59,4 +59,4 @@ var VisualizeView = BaseView.extend({
     }
 });
 
-module.exports = VisualizeView;
+module.exports = TopologyView;
