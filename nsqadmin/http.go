@@ -89,6 +89,7 @@ func NewHTTPServer(nsqadmin *NSQAdmin) *httpServer {
 	router.Handle("GET", bp("/topics"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/topology/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/nodes"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/nodes/:node"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/counter"), http_api.Decorate(s.indexHandler, log))
@@ -106,6 +107,7 @@ func NewHTTPServer(nsqadmin *NSQAdmin) *httpServer {
 	router.Handle("GET", bp("/api/topics"), http_api.Decorate(s.topicsHandler, log, http_api.V1))
 	router.Handle("GET", bp("/api/topics/:topic"), http_api.Decorate(s.topicHandler, log, http_api.V1))
 	router.Handle("GET", bp("/api/topics/:topic/:channel"), http_api.Decorate(s.channelHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/topology/topics/:topic/:channel"), http_api.Decorate(s.topologyChannelHandler, log, http_api.V1))
 	router.Handle("GET", bp("/api/nodes"), http_api.Decorate(s.nodesHandler, log, http_api.V1))
 	router.Handle("GET", bp("/api/nodes/:node"), http_api.Decorate(s.nodeHandler, log, http_api.V1))
 	router.Handle("POST", bp("/api/topics"), http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
@@ -298,6 +300,46 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		*clusterinfo.TopicStats
 		Message string `json:"message"`
 	}{allNodesTopicStats, maybeWarnMsg(messages)}, nil
+}
+
+func (s *httpServer) topologyChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+
+	producers, err := s.ci.GetTopicProducers(topicName,
+		s.nsqadmin.getOpts().NSQLookupdHTTPAddresses,
+		s.nsqadmin.getOpts().NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.nsqadmin.logf(LOG_ERROR, "failed to get topic producers - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.nsqadmin.logf(LOG_WARN, "%s", err)
+		messages = append(messages, pe.Error())
+	}
+	_, channelStats, err := s.ci.GetNSQDStats(producers, topicName, channelName, true)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.nsqadmin.logf(LOG_ERROR, "failed to get channel metadata - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.nsqadmin.logf(LOG_WARN, "%s", err)
+		messages = append(messages, pe.Error())
+	}
+	t := &clusterinfo.TopologyChannelStats{
+		NodeTopologyStats: make([]*clusterinfo.NodeInfo, 0),
+	}
+	t.FromNodeStats(channelStats[channelName])
+	sort.Sort(clusterinfo.TopologyChannelStatsByTopology{*t})
+
+	return struct {
+		*clusterinfo.TopologyChannelStats
+		Message string `json:"message"`
+	}{t, maybeWarnMsg(messages)}, nil
 }
 
 func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

@@ -1,0 +1,95 @@
+{{> warning}}
+{{> error}}
+
+<ol class="breadcrumb">
+  <li><a class="link" href="{{basePath "/"}}">Streams</a>
+  <li><a class="link" href="{{basePath "/topics"}}/{{urlencode topic}}">{{topic}}</a>
+  <li class="active">{{name}}</li>
+</ol>
+
+<div class="row">
+    <div class="col-md-6">
+        <blockquote>
+            <p><strong>Topology Visualizer</strong>
+            <p>Topic: <strong>{{topic}}</strong>
+            <p>Channel: <strong>{{name}}</strong>
+        </blockquote>
+    </div>
+</div>
+
+{{#unless nodes.length}}
+<div class="row">
+    <div class="col-md-6">
+        <div class="alert alert-warning">
+            <h4>Notice</h4> No producers exist for this topic/channel.
+            <p>See <a class="link" href="{{basePath "/lookup"}}">Lookup</a> for more information.
+        </div>
+    </div>
+</div>
+{{else}}
+
+
+{{#each nodes}}
+    <h3 style="text-align:center;">NSQd Host: <a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a></h3>
+    <h4 style="text-align:center;">Region: {{node_stats.node_topology_region}}</h4>
+    <h4 style="text-align:center;">Zone: {{node_stats.node_topology_zone}}</h4>
+
+    <h5><strong>Topology Analysis</strong></h5>
+    <div class="row">
+        <div class="col-md-12">
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>Topology Category</th>
+                    <th>Number of Clients</th>
+                    <th>Messages</th>
+                    <th>Message Percent</th>
+                </tr>
+                {{#each clients_topology_stats}}
+                <tr>
+                    <td>{{category}}</td>
+                    <td>{{client_count}}</td>
+                    <td>{{commafy message_count}}</td>
+                    <td>{{message_percent}}</td>
+                </tr>
+                {{/each}}
+            </table>
+        </div>
+    </div>
+
+
+
+    <h5><strong>Client Connections</strong></h5>
+    <div class="row">
+        <div class="col-md-12">
+            {{#unless node_stats.clients.length}}
+                <div class="alert alert-warning"><h4>Notice</h4>No clients connected to this channel</div>
+            {{else}}
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>Client Host</th>
+                    <th>User-Agent</th>
+                    <th>Region</th>
+                    <th>Zone</th>
+                    <th>Messages</th>
+                    <th>Connected</th>
+                </tr>
+                {{#each node_stats.clients}}
+                <tr style={{#if (and node_topology_zone (eq topology_zone node_topology_zone))}}"background-color:rgb(221,255,221)"{{/if}}{{#if (and node_topology_region (eq topology_region node_topology_region))}}"background-color:rgb(254,254,194)"{{/if}}>
+                    <td title="{{remote_address}}">{{hostname_port}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
+                    <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+                    <td>{{topology_region}}</td>
+                    <td>{{topology_zone}}</td>
+                    <td>{{commafy message_count}}</td>
+                    <td>{{nanotohuman connected}}</td>
+                </tr>
+                {{/each}}
+            </table>
+            {{/unless}}
+        </div>
+    </div>
+
+
+{{/each}}
+
+
+{{/unless}}

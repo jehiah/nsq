@@ -7,6 +7,7 @@ var BaseView = require('./base');
 
 var Topic = require('../models/topic');
 var Channel = require('../models/channel');
+var TopologyChannel = require('../models/topology');
 
 var LookupView = BaseView.extend({
     className: 'lookup container-fluid',

@@ -17,10 +17,12 @@ var LookupView = require('./lookup');
 var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
+var TopologyView = require('./topology');
 
 var NodeModel = require('../models/node');
 var TopicModel = require('../models/topic');
 var ChannelModel = require('../models/channel');
+var TopologyModel = require('../models/topology')
 
 var AppView = BaseView.extend({
     // not a fan of setting a view's el to an existing element on the page
@@ -42,6 +44,8 @@ var AppView = BaseView.extend({
         this.listenTo(Pubsub, 'nodes:show', this.showNodes);
         this.listenTo(Pubsub, 'node:show', this.showNode);
         this.listenTo(Pubsub, 'counter:show', this.showCounter);
+        this.listenTo(Pubsub, 'topology:show', this.showTopology);
+
 
         this.listenTo(Pubsub, 'view:ready', function() {
             $('.rate').each(function(i, el) {
@@ -98,6 +102,17 @@ var AppView = BaseView.extend({
         this.showView(function() {
             var model = new TopicModel({'name': topic, 'isAdmin': AppState.get('IS_ADMIN')});
             return new TopicView({'model': model});
+        });
+    },
+
+    showTopology: function(topic, channel) {
+        this.showView(function() {
+            var model = new TopologyModel({
+                'topic': topic,
+                'name': channel,
+                'isAdmin': AppState.get('IS_ADMIN')
+            });
+            return new TopologyView({'model': model});
         });
     },
 

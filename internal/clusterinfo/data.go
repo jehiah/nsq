@@ -600,6 +600,8 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers,
 					channel.Hostname = p.Hostname
 					channel.TopicName = topic.TopicName
 					channel.MemoryDepth = channel.Depth - channel.BackendDepth
+					channel.NodeTopologyRegion = p.TopologyRegion
+					channel.NodeTopologyZone = p.TopologyZone
 					key := channel.ChannelName
 					if selectedTopic == "" {
 						key = fmt.Sprintf("%s:%s", topic.TopicName, channel.ChannelName)
