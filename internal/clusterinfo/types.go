@@ -2,6 +2,7 @@ package clusterinfo
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
@@ -145,23 +146,25 @@ func (t *TopicStats) Add(a *TopicStats) {
 }
 
 type ChannelStats struct {
-	Node          string          `json:"node"`
-	Hostname      string          `json:"hostname"`
-	TopicName     string          `json:"topic_name"`
-	ChannelName   string          `json:"channel_name"`
-	Depth         int64           `json:"depth"`
-	MemoryDepth   int64           `json:"memory_depth"`
-	BackendDepth  int64           `json:"backend_depth"`
-	InFlightCount int64           `json:"in_flight_count"`
-	DeferredCount int64           `json:"deferred_count"`
-	RequeueCount  int64           `json:"requeue_count"`
-	TimeoutCount  int64           `json:"timeout_count"`
-	MessageCount  int64           `json:"message_count"`
-	ClientCount   int             `json:"client_count"`
-	Selected      bool            `json:"-"`
-	NodeStats     []*ChannelStats `json:"nodes"`
-	Clients       []*ClientStats  `json:"clients"`
-	Paused        bool            `json:"paused"`
+	Node               string          `json:"node"`
+	Hostname           string          `json:"hostname"`
+	TopicName          string          `json:"topic_name"`
+	ChannelName        string          `json:"channel_name"`
+	Depth              int64           `json:"depth"`
+	MemoryDepth        int64           `json:"memory_depth"`
+	BackendDepth       int64           `json:"backend_depth"`
+	InFlightCount      int64           `json:"in_flight_count"`
+	DeferredCount      int64           `json:"deferred_count"`
+	RequeueCount       int64           `json:"requeue_count"`
+	TimeoutCount       int64           `json:"timeout_count"`
+	MessageCount       int64           `json:"message_count"`
+	ClientCount        int             `json:"client_count"`
+	Selected           bool            `json:"-"`
+	NodeTopologyRegion string          `json:"node_topology_region,omitempty"`
+	NodeTopologyZone   string          `json:"node_topology_zone,omitempty"`
+	NodeStats          []*ChannelStats `json:"nodes"`
+	Clients            []*ClientStats  `json:"clients"`
+	Paused             bool            `json:"paused"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -342,4 +345,113 @@ type ProducersByHost struct {
 
 func (c ProducersByHost) Less(i, j int) bool {
 	return c.Producers[i].Hostname < c.Producers[j].Hostname
+}
+
+type TopologyChannelStats struct {
+	NodeTopologyStats []*NodeInfo `json:"nodes"`
+}
+
+type TopologyChannelStatsByTopology struct {
+	TopologyChannelStats
+}
+
+func (t TopologyChannelStatsByTopology) Less(i, j int) bool {
+	if t.NodeTopologyStats[i].NodeStats.NodeTopologyRegion == t.NodeTopologyStats[j].NodeStats.NodeTopologyRegion {
+		return t.NodeTopologyStats[i].NodeStats.NodeTopologyZone < t.NodeTopologyStats[j].NodeStats.NodeTopologyZone
+	}
+	return t.NodeTopologyStats[i].NodeStats.NodeTopologyRegion < t.NodeTopologyStats[j].NodeStats.NodeTopologyRegion
+}
+
+func (t TopologyChannelStatsByTopology) Len() int {
+	return len(t.NodeTopologyStats)
+}
+
+func (t TopologyChannelStatsByTopology) Swap(i, j int) {
+	t.NodeTopologyStats[i], t.NodeTopologyStats[j] = t.NodeTopologyStats[j], t.NodeTopologyStats[i]
+}
+
+type NodeInfo struct {
+	Node                string                    `json:"node"`
+	NodeStats           *ChannelStats             `json:"node_stats"`
+	ClientTopologyStats *NodeClientsTopologyStats `json:"clients_topology_stats"`
+}
+
+type NodeClientsTopologyStats struct {
+	ZoneClientStats   *TopologyClientStats `json:"zone"`
+	RegionClientStats *TopologyClientStats `json:"region"`
+	GlobalClientStats *TopologyClientStats `json:"global"`
+	TotalClientStats  *TopologyClientStats `json:"total"`
+}
+
+type TopologyClientStats struct {
+	Category       string `json:"category"`
+	ClientCount    int    `json:"client_count"`
+	MessageCount   int64  `json:"message_count"`
+	MessagePercent string `json:"message_percent"`
+}
+
+// FromNodeStats converts channelstats to topologyChannelStats
+func (t *TopologyChannelStats) FromNodeStats(channelStats *ChannelStats) {
+	if t == nil {
+		t = &TopologyChannelStats{
+			NodeTopologyStats: make([]*NodeInfo, 0),
+		}
+	}
+	for _, n := range channelStats.NodeStats {
+		nodeInfo := &NodeInfo{
+			Node:                n.Node,
+			NodeStats:           n,
+			ClientTopologyStats: GetNodeClientsTopologyStats(n),
+		}
+		sort.Sort(ClientStatsByNodeTopology{n.Clients})
+		t.NodeTopologyStats = append(t.NodeTopologyStats, nodeInfo)
+	}
+}
+
+func GetNodeClientsTopologyStats(n *ChannelStats) *NodeClientsTopologyStats {
+	ncTopologyStats := &NodeClientsTopologyStats{
+		ZoneClientStats: &TopologyClientStats{
+			Category: "Zone Local",
+		},
+		RegionClientStats: &TopologyClientStats{
+			Category: "Region Local",
+		},
+		GlobalClientStats: &TopologyClientStats{
+			Category: "Global",
+		},
+		TotalClientStats: &TopologyClientStats{
+			Category:       "Total",
+			ClientCount:    n.ClientCount,
+			MessageCount:   n.MessageCount,
+			MessagePercent: MessagePercent(100),
+		},
+	}
+	for _, c := range n.Clients {
+		if c.NodeTopologyRegion == c.TopologyRegion && c.NodeTopologyZone == c.TopologyZone {
+			ncTopologyStats.ZoneClientStats.TopologyClientStatsFromClient(c, n.MessageCount)
+		} else if c.NodeTopologyRegion == c.TopologyRegion {
+			ncTopologyStats.RegionClientStats.TopologyClientStatsFromClient(c, n.MessageCount)
+		} else {
+			ncTopologyStats.GlobalClientStats.TopologyClientStatsFromClient(c, n.MessageCount)
+		}
+	}
+
+	return ncTopologyStats
+}
+
+func (t *TopologyClientStats) TopologyClientStatsFromClient(c *ClientStats, totalMsgs int64) {
+	if t == nil {
+		t = &TopologyClientStats{}
+	}
+	t.ClientCount++
+	t.MessageCount += c.MessageCount
+	if totalMsgs == 0 || t.MessageCount == 0 {
+		t.MessagePercent = MessagePercent(0)
+	} else {
+		t.MessagePercent = MessagePercent((float64(t.MessageCount) / float64(totalMsgs)) * 100)
+	}
+}
+
+func MessagePercent(percent float64) string {
+	return fmt.Sprintf("%.2f%%", percent)
 }

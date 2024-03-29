@@ -28,199 +28,68 @@
 </div>
 {{else}}
 
-<div class="row">
-    <div class="col-md-12">
-    <h4>Channel</h4>
-    <table class="table table-bordered table-condensed">
-        <tr>
-            <th>&nbsp;</th>
-            <th colspan="4" class="text-center">Message Queues</th>
-            <th colspan="{{#if graph_active}}5{{else}}4{{/if}}" class="text-center">Statistics</th>
-            {{#if e2e_processing_latency.percentiles.length}}
-            <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
-            {{/if}}
-        </tr>
-        <tr>
-            <th>NSQd Host</th>
-            <th>Depth</th>
-            <th>Memory + Disk</th>
-            <th>In-Flight</th>
-            <th>Deferred</th>
-            <th>Requeued</th>
-            <th>Timed Out</th>
-            <th>Messages</th>
-            {{#if graph_active}}<th>Rate</th>{{/if}}
-            <th>Connections</th>
-            {{#each e2e_processing_latency.percentiles}}
-                <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
-            {{/each}}
-        </tr>
-        {{#each nodes}}
-        <tr>
-            <td>
-                {{#if show_broadcast_address}}
-                {{hostname_port}} (<a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a>)
-                {{else}}
-                <a class="link" href="{{basePath "/nodes"}}/{{node}}">{{hostname_port}}</a>
-                {{/if}}
-                {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
-            </td>
-            <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
-            <td>{{commafy in_flight_count}}</td>
-            <td>{{commafy deferred_count}}</td>
-            <td>{{commafy requeue_count}}</td>
-            <td>{{commafy timeout_count}}</td>
-            <td>{{commafy message_count}}</td>
-            {{#if ../graph_active}}
-                <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
-            {{/if}}
-            <td>{{commafy client_count}}</td>
-            {{#if e2e_processing_latency.percentiles.length}}
-                {{#each e2e_processing_latency.percentiles}}
-                <td>
-                    <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
-                </td>
+
+{{#each nodes}}
+    <h3 style="text-align:center;">NSQd Host: <a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a></h3>
+    <h4 style="text-align:center;">Region: {{node_stats.node_topology_region}}</h4>
+    <h4 style="text-align:center;">Zone: {{node_stats.node_topology_zone}}</h4>
+
+    <h5><strong>Topology Analysis</strong></h5>
+    <div class="row">
+        <div class="col-md-12">
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>Topology Category</th>
+                    <th>Number of Clients</th>
+                    <th>Messages</th>
+                    <th>Message Percent</th>
+                </tr>
+                {{#each clients_topology_stats}}
+                <tr>
+                    <td>{{category}}</td>
+                    <td>{{client_count}}</td>
+                    <td>{{commafy message_count}}</td>
+                    <td>{{message_percent}}</td>
+                </tr>
                 {{/each}}
-            {{/if}}
-        </tr>
-        {{#if ../graph_active}}
-        <tr class="graph-row">
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "timeout_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "message_count"}}"></a></td>
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a></td>
-            {{#if e2e_processing_latency.percentiles.length}}
-            <td colspan="{{e2e_processing_latency.percentiles.length}}">
-                <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20" src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
-            </td>
-            {{/if}}
-        </tr>
-        {{/if}}
-        {{/each}}
-        <tr class="info">
-            <td>Total:</td>
-            <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
-            <td>{{commafy in_flight_count}}</td>
-            <td>{{commafy deferred_count}}</td>
-            <td>{{commafy requeue_count}}</td>
-            <td>{{commafy timeout_count}}</td>
-            <td>{{commafy message_count}}</td>
-            {{#if graph_active}}
-                <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
-            {{/if}}
-            <td>{{commafy client_count}}</td>
-            {{#if e2e_processing_latency.percentiles.length}}
-                {{#each e2e_processing_latency.percentiles}}
-                <td>
-                    <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
-                </td>
-                {{/each}}
-            {{/if}}
-        </tr>
-        {{#if graph_active}}
-        <tr class="graph-row">
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "timeout_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "message_count"}}"></a></td>
-            <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a></td>
-            {{#if e2e_processing_latency.percentiles.length}}
-            <td colspan="{{e2e_processing_latency.percentiles.length}}">
-                <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
-            </td>
-            {{/if}}
-        </tr>
-        {{/if}}
-    </table>
+            </table>
+        </div>
     </div>
-</div>
+
+
+
+    <h5><strong>Client Connections</strong></h5>
+    <div class="row">
+        <div class="col-md-12">
+            {{#unless node_stats.clients.length}}
+                <div class="alert alert-warning"><h4>Notice</h4>No clients connected to this channel</div>
+            {{else}}
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>Client Host</th>
+                    <th>User-Agent</th>
+                    <th>Region</th>
+                    <th>Zone</th>
+                    <th>Messages</th>
+                    <th>Connected</th>
+                </tr>
+                {{#each node_stats.clients}}
+                <tr style={{#if (and node_topology_zone (eq topology_zone node_topology_zone))}}"background-color:rgb(221,255,221)"{{/if}}{{#if (and node_topology_region (eq topology_region node_topology_region))}}"background-color:rgb(254,254,194)"{{/if}}>
+                    <td title="{{remote_address}}">{{hostname_port}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
+                    <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+                    <td>{{topology_region}}</td>
+                    <td>{{topology_zone}}</td>
+                    <td>{{commafy message_count}}</td>
+                    <td>{{nanotohuman connected}}</td>
+                </tr>
+                {{/each}}
+            </table>
+            {{/unless}}
+        </div>
+    </div>
+
+
+{{/each}}
+
+
 {{/unless}}
-
-<h4>Client Connections</h4>
-
-<div class="row">
-    <div class="col-md-12">
-        {{#unless clients.length}}
-            <div class="alert alert-warning"><h4>Notice</h4>No clients connected to this channel</div>
-        {{else}}
-        <table class="table table-bordered table-condensed">
-            <tr>
-                <th>Client Host</th>
-                <th>User-Agent</th>
-                <th>Attributes</th>
-                <th>NSQd Host</th>
-                <th>In-Flight</th>
-                <th>Ready Count</th>
-                <th>Finished</th>
-                <th>Requeued</th>
-                <th>Messages</th>
-                <th>Connected</th>
-            </tr>
-            {{#each clients}}
-            <tr style={{#if (and node_topology_zone (eq topology_zone node_topology_zone))}}"background-color:rgb(221,255,221)"{{/if}}{{#if (and node_topology_region (eq topology_region node_topology_region))}}"background-color:rgb(254,254,194)"{{/if}}>
-                <td title="{{remote_address}}">{{hostname_port}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
-                <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
-                <td>
-                    {{#if sample_rate}}
-                        <span class="label label-info">Sampled {{sample_rate}}%</span>
-                    {{/if}}
-                    {{#if tls}}
-                        <span class="label label-warning" {{#if tls_version}}title="{{tls_version}} {{tls_cipher_suite}} {{tls_negotiated_protocol}} mutual:{{tls_negotiated_protocol_is_mutual}}"{{/if}}>TLS</span>
-                    {{/if}}
-                    {{#if deflate}}
-                        <span class="label label-default">Deflate</span>
-                    {{/if}}
-                    {{#if snappy}}
-                        <span class="label label-primary">Snappy</span>
-                    {{/if}}
-                    {{#if authed}}
-                        <span class="label label-success">
-                        {{#if auth_identity_url}}<a href="{{auth_identity_url}}">{{/if}}
-                        <span class="glyphicon glyphicon-user white" title="Authed{{#if auth_identity}} Identity:{{auth_identity}}{{/if}}"></span>
-                        {{#if auth_identity_url}}</a>{{/if}}
-                        </span>
-                    {{/if}}
-                    {{#if topology_region}}
-                        <span class="label label-default">{{topology_region}}</span>
-                    {{/if}}
-                    {{#if topology_zone}}
-                        <span class="label label-default">{{topology_zone}}</span>
-                    {{/if}}
-                    {{#if (and
-                        node_topology_zone
-                        (eq topology_zone node_topology_zone))}}
-                        <span class="label label-default">zoneLocal</span>
-                    {{else}}
-                        {{#if (and
-                            node_topology_region
-                            (eq topology_region node_topology_region))}}
-                            <span class="label label-default">regionLocal</span>
-                        {{/if}}
-                    {{/if}}
-                </td>
-                <td><a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a></td>
-                <td>{{commafy in_flight_count}}</td>
-                <td>{{commafy ready_count}}</td>
-                <td>{{commafy finish_count}}</td>
-                <td>{{commafy requeue_count}}</td>
-                <td>{{commafy message_count}}</td>
-                <td>{{nanotohuman connected}}</td>
-            </tr>
-            {{/each}}
-        </table>
-        {{/unless}}
-    </div>
-</div>

@@ -22,6 +22,7 @@ var TopologyView = require('./topology');
 var NodeModel = require('../models/node');
 var TopicModel = require('../models/topic');
 var ChannelModel = require('../models/channel');
+var TopologyModel = require('../models/topology')
 
 var AppView = BaseView.extend({
     // not a fan of setting a view's el to an existing element on the page
@@ -106,7 +107,7 @@ var AppView = BaseView.extend({
 
     showTopology: function(topic, channel) {
         this.showView(function() {
-            var model = new ChannelModel({
+            var model = new TopologyModel({
                 'topic': topic,
                 'name': channel,
                 'isAdmin': AppState.get('IS_ADMIN')
